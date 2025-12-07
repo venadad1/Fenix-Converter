@@ -71,37 +71,44 @@ export const convertTextData = async (file: File, targetFormat: 'json' | 'csv' |
           // If it looks like CSV, try to convert (mock)
           if (!text.trim().startsWith('{') && !text.trim().startsWith('[')) {
              const lines = text.split('\n');
-             const headers = lines[0].split(',');
-             const result = [];
-             for(let i=1;i<lines.length;i++){
-                 const obj: any = {};
-                 const currentline = lines[i].split(',');
-                 if (currentline.length === headers.length) {
-                    for(let j=0;j<headers.length;j++){
-                        obj[headers[j].trim()] = currentline[j]?.trim();
-                    }
-                    result.push(obj);
+             if (lines.length > 0) {
+                 const headers = lines[0].split(',');
+                 const result = [];
+                 for(let i=1;i<lines.length;i++){
+                     if (!lines[i].trim()) continue;
+                     const obj: any = {};
+                     const currentline = lines[i].split(',');
+                     // Basic matching of columns
+                     for(let j=0;j<headers.length;j++){
+                         if (headers[j]) {
+                             obj[headers[j].trim()] = currentline[j]?.trim();
+                         }
+                     }
+                     result.push(obj);
                  }
+                 output = JSON.stringify(result, null, 2);
              }
-             output = JSON.stringify(result, null, 2);
           }
       } else if (targetFormat === 'csv') {
           mimeType = 'text/csv';
           try {
-              const json = JSON.parse(text);
-              const array = Array.isArray(json) ? json : [json];
-              if (array.length > 0) {
-                  const headers = Object.keys(array[0]);
-                  const csvRows = [headers.join(',')];
-                  for (const row of array) {
-                      const values = headers.map(header => {
-                          const val = row[header] !== undefined ? row[header] : '';
-                          const escaped = ('' + val).replace(/"/g, '\\"');
-                          return `"${escaped}"`;
-                      });
-                      csvRows.push(values.join(','));
+              // Try parsing as JSON to convert to CSV
+              if (text.trim().startsWith('{') || text.trim().startsWith('[')) {
+                  const json = JSON.parse(text);
+                  const array = Array.isArray(json) ? json : [json];
+                  if (array.length > 0) {
+                      const headers = Object.keys(array[0]);
+                      const csvRows = [headers.join(',')];
+                      for (const row of array) {
+                          const values = headers.map(header => {
+                              const val = row[header] !== undefined ? row[header] : '';
+                              const escaped = ('' + val).replace(/"/g, '\\"');
+                              return `"${escaped}"`;
+                          });
+                          csvRows.push(values.join(','));
+                      }
+                      output = csvRows.join('\n');
                   }
-                  output = csvRows.join('\n');
               }
           } catch (err) {
               console.warn("Could not parse JSON for CSV conversion, returning text");
@@ -119,10 +126,10 @@ export const convertTextData = async (file: File, targetFormat: 'json' | 'csv' |
 export const simulateConversion = async (file: File, targetMimeType: string, delayMs = 2000): Promise<Blob> => {
   return new Promise((resolve) => {
     setTimeout(() => {
-      // CRITICAL FIX: We return a new Blob with the TARGET mime type.
-      // This allows the browser to respect the requested extension (e.g., .avi) during download
-      // rather than defaulting to the source extension (e.g. .mp4) because of a mime type mismatch.
-      const newBlob = new Blob([file], { type: targetMimeType });
+      // CRITICAL FIX: Use .slice() to create a new Blob with the correct MIME type.
+      // This is more efficient than new Blob([file]) and strictly sets the type
+      // preventing browsers from appending the wrong extension during download.
+      const newBlob = file.slice(0, file.size, targetMimeType);
       resolve(newBlob);
     }, delayMs);
   });
