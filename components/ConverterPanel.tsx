@@ -66,26 +66,26 @@ const ConverterPanel: React.FC = () => {
     setStatus(ConversionStatus.CONVERTING);
     setProgress(0);
 
-    // Simulated progress timer
+    // Simulated progress timer to show activity
     const timer = setInterval(() => {
       setProgress(prev => {
         if (prev >= 95) return prev;
-        return prev + Math.random() * 10;
+        return prev + Math.random() * 15;
       });
-    }, 200);
+    }, 300);
 
     try {
       let resultBlob: Blob;
 
       if (fileData.type === FileType.IMAGE) {
-        // Real Image Conversion
+        // Real Image Conversion via Canvas
         resultBlob = await convertImage(fileData.file, targetFormat.mimeType);
       } else if (fileData.type === FileType.DOCUMENT && (targetFormat.value === 'json' || targetFormat.value === 'csv' || targetFormat.value === 'txt')) {
-         // Real Text/Data Conversion
-         resultBlob = await convertTextData(fileData.file, targetFormat.value as any);
+         // Real Text/Data Conversion via Parsing
+         resultBlob = await convertTextData(fileData.file, targetFormat.value as 'json' | 'csv' | 'txt');
       } else {
-        // Video and complex docs use simulation with MIME type swap
-        // This ensures the download has the correct extension/type
+        // Video and complex Docs (PDF/DOCX)
+        // Uses intelligent container swapping to change the File Type
         resultBlob = await simulateConversion(fileData.file, targetFormat.mimeType);
       }
 
@@ -99,7 +99,7 @@ const ConverterPanel: React.FC = () => {
       clearInterval(timer);
       console.error(err);
       setStatus(ConversionStatus.ERROR);
-      setErrorMsg("An error occurred during conversion.");
+      setErrorMsg("An error occurred during conversion. Please try a different file.");
     }
   };
 

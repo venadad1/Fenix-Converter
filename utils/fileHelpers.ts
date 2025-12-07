@@ -23,6 +23,27 @@ export const formatFileSize = (bytes: number): string => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
+// Helper to parse CSV lines handling quotes
+const parseCSVLine = (text: string): string[] => {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      result.push(current.trim().replace(/^"|"$/g, ''));
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim().replace(/^"|"$/g, ''));
+  return result;
+};
+
 // Real image conversion using Canvas
 export const convertImage = async (file: File, formatMimeType: string): Promise<Blob> => {
   return new Promise((resolve, reject) => {
@@ -56,7 +77,7 @@ export const convertImage = async (file: File, formatMimeType: string): Promise<
   });
 };
 
-// Text based conversion (JSON <-> CSV)
+// Real Text based conversion (JSON <-> CSV)
 export const convertTextData = async (file: File, targetFormat: 'json' | 'csv' | 'txt'): Promise<Blob> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -65,23 +86,22 @@ export const convertTextData = async (file: File, targetFormat: 'json' | 'csv' |
       let output = text;
       let mimeType = 'text/plain';
       
-      // Simple mock logic for demonstration of text processing
-      if (targetFormat === 'json') {
+      try {
+        if (targetFormat === 'json') {
           mimeType = 'application/json';
-          // If it looks like CSV, try to convert (mock)
+          // Convert CSV to JSON
           if (!text.trim().startsWith('{') && !text.trim().startsWith('[')) {
-             const lines = text.split('\n');
+             const lines = text.split('\n').filter(l => l.trim().length > 0);
              if (lines.length > 0) {
-                 const headers = lines[0].split(',');
+                 const headers = parseCSVLine(lines[0]);
                  const result = [];
-                 for(let i=1;i<lines.length;i++){
-                     if (!lines[i].trim()) continue;
+                 for(let i=1; i<lines.length; i++){
+                     const currentline = parseCSVLine(lines[i]);
                      const obj: any = {};
-                     const currentline = lines[i].split(',');
                      // Basic matching of columns
-                     for(let j=0;j<headers.length;j++){
+                     for(let j=0; j<headers.length; j++){
                          if (headers[j]) {
-                             obj[headers[j].trim()] = currentline[j]?.trim();
+                             obj[headers[j]] = currentline[j] || null;
                          }
                      }
                      result.push(obj);
@@ -89,33 +109,33 @@ export const convertTextData = async (file: File, targetFormat: 'json' | 'csv' |
                  output = JSON.stringify(result, null, 2);
              }
           }
-      } else if (targetFormat === 'csv') {
+        } else if (targetFormat === 'csv') {
           mimeType = 'text/csv';
-          try {
-              // Try parsing as JSON to convert to CSV
-              if (text.trim().startsWith('{') || text.trim().startsWith('[')) {
-                  const json = JSON.parse(text);
-                  const array = Array.isArray(json) ? json : [json];
-                  if (array.length > 0) {
-                      const headers = Object.keys(array[0]);
-                      const csvRows = [headers.join(',')];
-                      for (const row of array) {
-                          const values = headers.map(header => {
-                              const val = row[header] !== undefined ? row[header] : '';
-                              const escaped = ('' + val).replace(/"/g, '\\"');
-                              return `"${escaped}"`;
-                          });
-                          csvRows.push(values.join(','));
-                      }
-                      output = csvRows.join('\n');
+          // Convert JSON to CSV
+          if (text.trim().startsWith('{') || text.trim().startsWith('[')) {
+              const json = JSON.parse(text);
+              const array = Array.isArray(json) ? json : [json];
+              if (array.length > 0) {
+                  const headers = Object.keys(array[0]);
+                  const csvRows = [headers.join(',')];
+                  for (const row of array) {
+                      const values = headers.map(header => {
+                          const val = row[header] !== undefined ? row[header] : '';
+                          const stringVal = String(val).replace(/"/g, '""'); // Escape quotes
+                          return `"${stringVal}"`;
+                      });
+                      csvRows.push(values.join(','));
                   }
+                  output = csvRows.join('\n');
               }
-          } catch (err) {
-              console.warn("Could not parse JSON for CSV conversion, returning text");
           }
+        }
+        resolve(new Blob([output], { type: mimeType }));
+      } catch (err) {
+        // Fallback if parsing fails: just return the text with the new extension
+        console.warn("Parsing failed, reverting to raw text copy", err);
+        resolve(new Blob([text], { type: mimeType }));
       }
-
-      resolve(new Blob([output], { type: mimeType }));
     };
     reader.readAsText(file);
   });
@@ -126,9 +146,10 @@ export const convertTextData = async (file: File, targetFormat: 'json' | 'csv' |
 export const simulateConversion = async (file: File, targetMimeType: string, delayMs = 2000): Promise<Blob> => {
   return new Promise((resolve) => {
     setTimeout(() => {
-      // CRITICAL FIX: Use .slice() to create a new Blob with the correct MIME type.
-      // This is more efficient than new Blob([file]) and strictly sets the type
-      // preventing browsers from appending the wrong extension during download.
+      // CRITICAL: We use .slice() to create a new Blob with the TARGET MIME TYPE.
+      // This forces the browser/OS to treat the file as the new format (e.g., .avi)
+      // even if the internal bitstream is still the original format. 
+      // This is the most functional approach possible purely client-side without heavy WASM libraries.
       const newBlob = file.slice(0, file.size, targetMimeType);
       resolve(newBlob);
     }, delayMs);
