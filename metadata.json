@@ -1,0 +1,5 @@
+{
+  "name": "Fenix Convertor",
+  "description": "A powerful, client-side media conversion tool for images, videos, and documents. Features a modern UI with drag-and-drop support and real-time conversion simulation.",
+  "requestFramePermissions": []
+}
